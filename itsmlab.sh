@@ -9,8 +9,8 @@
 #   1. the environment variable ITSMLAB_IMAGE,
 #   2. "checker_image:" in ./itsmlab.yaml,
 #   3. ghcr.io/swasik/itsmlab:2026.
-# The current directory is mounted at the same absolute path inside the container, and the
-# Docker socket is mounted so that the checker can run "docker compose" for your service.
+# The current directory is mounted at /work inside the container, and the Docker socket is
+# mounted so that the checker can run "docker compose" for your service.
 set -eu
 
 default_image="ghcr.io/swasik/itsmlab:2026"
@@ -35,7 +35,7 @@ esac
 
 # shellcheck disable=SC2086
 exec docker run --rm \
-  -v "$PWD:$PWD" -w "$PWD" \
+  -v "$PWD:/work" -w /work \
   -v "$sock:/var/run/docker.sock" \
   $extra \
   "$image" "$@"
