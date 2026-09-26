@@ -68,7 +68,10 @@ def is_business_window(local_dt: datetime) -> bool:
 
 def next_business_start(local_dt: datetime) -> datetime:
     candidate = local_dt.date()
-    for offset in range(14):
+    if local_dt.weekday() < 5 and local_dt.timetz() < time(8, 0, 0):
+        return datetime.combine(candidate, time(8, 0, 0), tzinfo=local_dt.tzinfo)
+
+    for offset in range(1, 14):
         day = candidate + timedelta(days=offset)
         if is_business_day(day):
             return datetime.combine(day, time(8, 0, 0), tzinfo=local_dt.tzinfo)
@@ -76,36 +79,32 @@ def next_business_start(local_dt: datetime) -> datetime:
 
 
 def business_due_for(created_at: datetime, target: timedelta) -> datetime:
-    local_created = created_at.astimezone(WARSAW)
-    current = local_created
-    if not is_business_window(current):
-        current = next_business_start(current)
+    local = created_at.astimezone(WARSAW)
+
+    # If the ticket is created outside working hours, SLA starts
+    # at the next business window.
+    if local.weekday() >= 5 or local.timetz() >= time(16, 0):
+        local = next_business_start(local)
+    elif local.timetz() < time(8, 0):
+        local = local.replace(hour=8, minute=0, second=0, microsecond=0)
+
     remaining = target
 
     while remaining > timedelta(0):
-        if current.weekday() >= 5:
-            current = next_business_start(current)
-            continue
+        end = local.replace(hour=16, minute=0, second=0, microsecond=0)
+        available = end - local
 
-        today_start = current.replace(hour=8, minute=0, second=0, microsecond=0)
-        today_end = current.replace(hour=16, minute=0, second=0, microsecond=0)
-        if current < today_start:
-            current = today_start
-        if current >= today_end:
-            current = next_business_start(current)
-            continue
-
-        available = today_end - current
         if remaining <= available:
-            return (current + remaining).astimezone(timezone.utc)
-        remaining -= available
-        current = next_business_start(today_end)
+            return (local + remaining).astimezone(timezone.utc)
 
-    raise RuntimeError("business due calculation failed")
+        remaining -= available
+        local = next_business_start(end)
+
+    return local.astimezone(timezone.utc)
 
 
 def compute_sla_for_priority(created_at: datetime, priority: str) -> dict[str, str]:
-    ack_window = {"P1": timedelta(minutes=15), "P2": timedelta(hours=1), "P3": timedelta(hours=4), "P4": timedelta(hours=8)}
+    ack_window = {"P1": timedelta(hours=1), "P2": timedelta(hours=1), "P3": timedelta(hours=4), "P4": timedelta(hours=8)}
     resolve_window = {"P1": timedelta(hours=4), "P2": timedelta(hours=8), "P3": timedelta(hours=24), "P4": timedelta(hours=72)}
 
     if priority == "P1" and DECISION_C1 == "wallclock":

@@ -123,14 +123,31 @@ def test_reopen_window_and_closed_immutable():
 
 
 def test_sla_vectors():
-    # T1 business P1
-    response = client.post(
-        "/tickets",
-        json={"title": "T1", "reporter": {"name": "T1"}, "impact": 1, "urgency": 1},
-        headers={"X-Test-Clock": "2026-10-14T10:00:00Z"},
-    )
-    ticket = response.json()
-    assert ticket["sla"]["ack_due_at"] == "2026-10-14T10:15:00Z" if ticket["priority"] == "P1" else True
+    expected = {
+        "T1": {"priority": "P1", "ack_due_at": "2026-10-14T10:15:00Z", "resolve_due_at": "2026-10-14T14:00:00Z"},
+        "T2": {"priority": "P3", "ack_due_at": "2026-10-19T09:30:00Z", "resolve_due_at": "2026-10-21T13:30:00Z"},
+        "T4": {"priority": "P2", "ack_due_at": "2026-10-19T07:00:00Z", "resolve_due_at": "2026-10-19T14:00:00Z"},
+        "T5": {"priority": "P4", "ack_due_at": "2027-01-15T14:30:00Z", "resolve_due_at": "2027-01-27T14:30:00Z"},
+    }
+
+    for label, payload in [
+        ("T1", {"title": "T1", "reporter": {"name": "T1"}, "impact": 1, "urgency": 1}),
+        ("T2", {"title": "T2", "reporter": {"name": "T2"}, "impact": 1, "urgency": 3}),
+        ("T4", {"title": "T4", "reporter": {"name": "T4"}, "impact": 2, "urgency": 1}),
+        ("T5", {"title": "T5", "reporter": {"name": "T5"}, "impact": 3, "urgency": 3}),
+    ]:
+        clock = {
+            "T1": "2026-10-14T10:00:00Z",
+            "T2": "2026-10-16T13:30:00Z",
+            "T4": "2026-10-17T10:00:00Z",
+            "T5": "2027-01-14T14:30:00Z",
+        }[label]
+        response = client.post("/tickets", json=payload, headers={"X-Test-Clock": clock})
+        assert response.status_code == 201, response.text
+        ticket = response.json()
+        assert ticket["priority"] == expected[label]["priority"]
+        assert ticket["sla"]["ack_due_at"] == expected[label]["ack_due_at"]
+        assert ticket["sla"]["resolve_due_at"] == expected[label]["resolve_due_at"]
 
 
 def test_sla_breach_and_pause():
