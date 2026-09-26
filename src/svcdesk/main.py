@@ -104,7 +104,7 @@ def business_due_for(created_at: datetime, target: timedelta) -> datetime:
 
 
 def compute_sla_for_priority(created_at: datetime, priority: str) -> dict[str, str]:
-    ack_window = {"P1": timedelta(hours=1), "P2": timedelta(hours=1), "P3": timedelta(hours=4), "P4": timedelta(hours=8)}
+    ack_window = {"P1": timedelta(minutes=15), "P2": timedelta(hours=1), "P3": timedelta(hours=4), "P4": timedelta(hours=8)}
     resolve_window = {"P1": timedelta(hours=4), "P2": timedelta(hours=8), "P3": timedelta(hours=24), "P4": timedelta(hours=72)}
 
     if priority == "P1" and DECISION_C1 == "wallclock":
