@@ -6,6 +6,7 @@ import os
 import sqlite3
 import uuid
 from datetime import date, datetime, time, timedelta, timezone
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
@@ -372,12 +373,375 @@ def compute_paused(ticket: dict[str, Any], now: datetime) -> bool:
     return not is_business_window(now.astimezone(WARSAW))
 
 
+def parse_rfc3339(raw: str) -> datetime:
+    if not isinstance(raw, str):
+        raise ValidationError("timestamp is not a valid RFC 3339 string")
+    candidate = raw.strip()
+    if not candidate:
+        raise ValidationError("timestamp is empty")
+    if candidate.endswith("Z"):
+        candidate = candidate[:-1] + "+00:00"
+    try:
+        value = datetime.fromisoformat(candidate)
+    except ValueError as exc:
+        raise ValidationError("timestamp is not a valid RFC 3339 string") from exc
+    if value.tzinfo is None:
+        raise ValidationError("timestamp is missing timezone information")
+    return value.astimezone(timezone.utc)
+
+
+def round_decimal_half_up(value: Decimal, places: int) -> Decimal:
+    quant = Decimal("1") if places == 0 else Decimal("1").scaleb(-places)
+    return value.quantize(quant, rounding=ROUND_HALF_UP)
+
+
+def median_duration(values: list[int]) -> Optional[int]:
+    if not values:
+        return None
+    ordered = sorted(values)
+    midpoint = len(ordered) // 2
+    if len(ordered) % 2 == 1:
+        result = ordered[midpoint]
+    else:
+        lower = ordered[midpoint - 1]
+        upper = ordered[midpoint]
+        result = int(round_decimal_half_up((Decimal(lower) + Decimal(upper)) / Decimal(2), 0))
+    return int(result)
+
+
+def float_rate(value: Decimal, places: int = 6) -> Optional[float]:
+    if value.is_nan():
+        return None
+    quantized = round_decimal_half_up(value, places)
+    return float(quantized)
+
+
+def normalize_event_id(raw: Any) -> str:
+    if not isinstance(raw, str) or not raw or len(raw) > 64:
+        raise ValidationError("event_id must be a non-empty string up to 64 chars")
+    return raw
+
+
+def dedupe_events(events: list[Any]) -> list[dict[str, Any]]:
+    deduped: dict[str, dict[str, Any]] = {}
+    for raw_event in events:
+        if not isinstance(raw_event, dict):
+            raise ValidationError("every event must be a JSON object")
+        event_id = normalize_event_id(raw_event.get("event_id"))
+        if event_id not in deduped:
+            deduped[event_id] = raw_event
+    return list(deduped.values())
+
+
+def validate_event_log(events: Any) -> list[dict[str, Any]]:
+    if events is None or not isinstance(events, list):
+        raise ValidationError("events must be an array")
+
+    deduped = dedupe_events(events)
+    commit_shas: set[str] = set()
+    deployment_ids: set[str] = set()
+    incident_ids: set[str] = set()
+    incident_openeds: dict[str, datetime] = {}
+    incident_resolveds: dict[str, datetime] = {}
+
+    for raw_event in deduped:
+        event_type = raw_event.get("type")
+        if event_type not in {"commit", "deployment", "incident"}:
+            raise ValidationError("event type must be commit, deployment or incident")
+        parse_rfc3339(raw_event.get("at"))
+
+        if event_type == "commit":
+            sha = raw_event.get("sha")
+            if not isinstance(sha, str) or not sha:
+                raise ValidationError("commit.sha is required")
+            if sha in commit_shas:
+                raise ValidationError("commit sha must be unique")
+            commit_shas.add(sha)
+            if raw_event.get("reverts") is None:
+                if not isinstance(raw_event.get("change_id"), str) or not raw_event.get("change_id"):
+                    raise ValidationError("commit.change_id is required when reverts is null")
+            else:
+                if not isinstance(raw_event.get("reverts"), str):
+                    raise ValidationError("commit.reverts must be a sha or null")
+                if raw_event.get("change_id") is not None:
+                    raise ValidationError("revert commit must not carry its own change_id")
+            continue
+
+        if event_type == "deployment":
+            deployment_id = raw_event.get("deployment_id")
+            if not isinstance(deployment_id, str) or not deployment_id:
+                raise ValidationError("deployment.deployment_id is required")
+            if deployment_id in deployment_ids:
+                raise ValidationError("deployment_id must be unique")
+            deployment_ids.add(deployment_id)
+            if raw_event.get("outcome") not in {"success", "failure"}:
+                raise ValidationError("deployment.outcome must be success or failure")
+            commits = raw_event.get("commits")
+            if not isinstance(commits, list):
+                raise ValidationError("deployment.commits must be a list")
+            continue
+
+        if event_type == "incident":
+            incident_id = raw_event.get("incident_id")
+            if not isinstance(incident_id, str) or not incident_id:
+                raise ValidationError("incident.incident_id is required")
+            incident_ids.add(incident_id)
+            if raw_event.get("phase") not in {"opened", "resolved"}:
+                raise ValidationError("incident.phase must be opened or resolved")
+            if raw_event.get("phase") == "opened":
+                incident_openeds[incident_id] = parse_rfc3339(raw_event.get("at"))
+            else:
+                incident_resolveds[incident_id] = parse_rfc3339(raw_event.get("at"))
+
+    for raw_event in deduped:
+        event_type = raw_event.get("type")
+        if event_type == "commit":
+            reverts = raw_event.get("reverts")
+            if reverts is not None and reverts not in commit_shas:
+                raise ValidationError("commit.reverts references missing sha")
+        elif event_type == "deployment":
+            commits = raw_event.get("commits")
+            for commit_sha in commits:
+                if not isinstance(commit_sha, str) or commit_sha not in commit_shas:
+                    raise ValidationError("deployment.commits references missing sha")
+            caused_by = raw_event.get("caused_by")
+            if caused_by is not None and caused_by not in incident_ids:
+                raise ValidationError("deployment.caused_by references missing incident")
+        elif event_type == "incident":
+            deployments = raw_event.get("deployments")
+            for deployment_id in deployments:
+                if not isinstance(deployment_id, str) or deployment_id not in deployment_ids:
+                    raise ValidationError("incident.deployments references a missing deployment")
+            incident_id = raw_event.get("incident_id")
+            if raw_event.get("phase") == "resolved" and incident_id not in incident_openeds:
+                raise ValidationError("incident resolved before it was opened")
+            if incident_id in incident_openeds and incident_id in incident_resolveds:
+                if incident_resolveds[incident_id] < incident_openeds[incident_id]:
+                    raise ValidationError("incident resolution cannot precede opening")
+
+    return deduped
+
+
+def resolve_change_id(sha: str, commit_by_sha: dict[str, dict[str, Any]], cache: dict[str, str]) -> str:
+    if sha in cache:
+        return cache[sha]
+    commit = commit_by_sha.get(sha)
+    if commit is None:
+        raise ValidationError(f"unknown commit sha {sha}")
+    reverts = commit.get("reverts")
+    if reverts is None:
+        change_id = commit.get("change_id")
+        cache[sha] = change_id
+        return change_id
+    cache[sha] = resolve_change_id(reverts, commit_by_sha, cache)
+    return cache[sha]
+
+
+def to_second_count(delta: timedelta) -> int:
+    return int(round_decimal_half_up(Decimal(str(delta.total_seconds())), 0))
+
+
+def compute_dora_metrics(body: Any) -> dict[str, Any]:
+    if not isinstance(body, dict):
+        raise ValidationError("request body must be a JSON object")
+    if "window" not in body or not isinstance(body["window"], dict):
+        raise ValidationError("window is required")
+    if "events" not in body or not isinstance(body["events"], list):
+        raise ValidationError("events is required and must be an array")
+
+    window = body["window"]
+    window_from = parse_rfc3339(window.get("from"))
+    window_to = parse_rfc3339(window.get("to"))
+    if window_to <= window_from:
+        raise ValidationError("window.to must be after window.from")
+
+    events = validate_event_log(body["events"])
+    commit_by_sha = {event["sha"]: event for event in events if event["type"] == "commit"}
+    incident_by_id: dict[str, dict[str, Any]] = {}
+    for event in events:
+        if event["type"] == "incident":
+            incident_by_id.setdefault(event["incident_id"], {})
+            incident_by_id[event["incident_id"]][event["phase"]] = event
+
+    production_deployments = [
+        event for event in events
+        if event["type"] == "deployment"
+        and event.get("environment") == "production"
+        and window_from <= parse_rfc3339(event["at"]) < window_to
+    ]
+    production_deployments.sort(key=lambda event: parse_rfc3339(event["at"]))
+    successful_deployments = [event for event in production_deployments if event.get("outcome") == "success"]
+    failed_deployments = [event for event in production_deployments if event.get("outcome") == "failure"]
+    total_deployments = len(production_deployments)
+
+    change_cache: dict[str, str] = {}
+    all_changes = {resolve_change_id(event["sha"], commit_by_sha, change_cache) for event in events if event["type"] == "commit"}
+    lead_time_values: list[int] = []
+    negative_lead_pairs = 0
+    for deployment in successful_deployments:
+        deployment_at = parse_rfc3339(deployment["at"])
+        for commit_sha in set(deployment.get("commits", [])):
+            if commit_sha not in commit_by_sha:
+                continue
+            commit_at = parse_rfc3339(commit_by_sha[commit_sha]["at"])
+            delta = deployment_at - commit_at
+            seconds = to_second_count(delta)
+            if seconds < 0:
+                negative_lead_pairs += 1
+                seconds = 0
+            lead_time_values.append(seconds)
+
+    counts = {
+        "deployments": total_deployments,
+        "successful_deployments": len(successful_deployments),
+        "failed_deployments": len(failed_deployments),
+        "recovered_failures": 0,
+        "open_failures": 0,
+        "rework_deployments": sum(1 for event in production_deployments if event.get("unplanned") is True and event.get("caused_by") is not None),
+        "lead_time_pairs": len(lead_time_values),
+        "changes": len(all_changes),
+    }
+
+    non_main_shas = set()
+    for deployment in production_deployments:
+        for commit_sha in set(deployment.get("commits", [])):
+            commit = commit_by_sha.get(commit_sha)
+            if commit and commit.get("branch") != "main":
+                non_main_shas.add(commit_sha)
+
+    anomalies = {
+        "negative_lead_time_pairs": negative_lead_pairs,
+        "deployments_without_commits": sum(1 for event in production_deployments if not event.get("commits")),
+        "commits_never_on_main": len(non_main_shas),
+        "revert_chains_collapsed": sum(1 for event in events if event["type"] == "commit" and event.get("reverts") is not None),
+    }
+
+    intervals: list[tuple[datetime, datetime]] = []
+    for incident_id, phases in incident_by_id.items():
+        opened = phases.get("opened")
+        if opened is None:
+            continue
+        opened_at = parse_rfc3339(opened["at"])
+        resolved = phases.get("resolved")
+        resolved_at = parse_rfc3339(resolved["at"]) if resolved is not None else window_to
+        intervals.append((opened_at, resolved_at))
+    overlap_pairs = 0
+    for idx, (sa, ea) in enumerate(intervals):
+        for sb, eb in intervals[idx + 1:]:
+            if sa < eb and sb < ea:
+                overlap_pairs += 1
+    anomalies["overlapping_incident_pairs"] = overlap_pairs
+
+    if total_deployments == 0:
+        deployment_frequency = 0.0
+    else:
+        window_seconds = (window_to - window_from).total_seconds()
+        deployment_frequency = float_rate(Decimal(total_deployments) / (Decimal(window_seconds) / Decimal(86400)), 6) or 0.0
+    change_fail_rate = None if total_deployments == 0 else float_rate(Decimal(len(failed_deployments)) / Decimal(total_deployments), 6)
+    deployment_rework_rate = None if total_deployments == 0 else float_rate(Decimal(counts["rework_deployments"]) / Decimal(total_deployments), 6)
+
+    recovered_failure_durations: list[int] = []
+    for deployment in failed_deployments:
+        deployment_id = deployment["deployment_id"]
+        candidates = []
+        for incident in events:
+            if incident["type"] != "incident":
+                continue
+            if deployment_id in incident.get("deployments", []):
+                opened = incident_by_id.get(incident["incident_id"], {}).get("opened")
+                resolved = incident_by_id.get(incident["incident_id"], {}).get("resolved")
+                if opened is not None:
+                    candidates.append((parse_rfc3339(opened["at"]), parse_rfc3339(resolved["at"]) if resolved is not None else None, incident["incident_id"]))
+        if not candidates:
+            counts["open_failures"] += 1
+            continue
+        candidates.sort(key=lambda item: (item[0], item[2]))
+        _, resolved_at, _ = candidates[0]
+        if resolved_at is None:
+            counts["open_failures"] += 1
+            continue
+        recovered_failure_durations.append(to_second_count(resolved_at - parse_rfc3339(deployment["at"])))
+        counts["recovered_failures"] += 1
+
+    delivered_change_ids: set[str] = set()
+    for deployment in successful_deployments:
+        for commit_sha in set(deployment.get("commits", [])):
+            if commit_sha in commit_by_sha:
+                delivered_change_ids.add(resolve_change_id(commit_sha, commit_by_sha, {}))
+
+    true_change_durations: list[int] = []
+    for change_id in sorted(delivered_change_ids):
+        matching_commits = [event for event in events if event["type"] == "commit" and resolve_change_id(event["sha"], commit_by_sha, {}) == change_id]
+        earliest_commit = min(parse_rfc3339(event["at"]) for event in matching_commits)
+        first_successful = None
+        for deployment in successful_deployments:
+            deployment_at = parse_rfc3339(deployment["at"])
+            if any(resolve_change_id(commit_sha, commit_by_sha, {}) == change_id for commit_sha in set(deployment.get("commits", []))):
+                if first_successful is None or deployment_at < first_successful:
+                    first_successful = deployment_at
+        if first_successful is None:
+            continue
+        true_change_durations.append(max(0, to_second_count(first_successful - earliest_commit)))
+
+    result = {
+        "spec_version": "1.0.0",
+        "window": {"from": window["from"], "to": window["to"]},
+        "deployment_frequency_per_day": deployment_frequency,
+        "change_lead_time_seconds_p50": median_duration(lead_time_values),
+        "failed_deployment_recovery_time_seconds_p50": median_duration(recovered_failure_durations),
+        "change_fail_rate": change_fail_rate,
+        "deployment_rework_rate": deployment_rework_rate,
+        "counts": counts,
+        "anomalies": anomalies,
+        "ground_truth": {
+            "changes_delivered": len(delivered_change_ids),
+            "true_change_lead_time_seconds_p50": median_duration(true_change_durations),
+        },
+    }
+    return result
+
+
 app = FastAPI(title="svcdesk")
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "svcdesk"}
+
+
+@app.post("/dora/metrics")
+async def dora_metrics(request: Request) -> Any:
+    try:
+        payload = await request.json()
+    except Exception as exc:
+        return error_response("validation", "request body must be valid JSON", 400)
+    try:
+        return compute_dora_metrics(payload)
+    except ValidationError as exc:
+        return error_response("validation", str(exc), 400)
+
+
+@app.get("/dora/ticket-events")
+def ticket_events() -> list[dict[str, Any]]:
+    rows = fetch_all_tickets({})
+    events: list[dict[str, Any]] = []
+    for ticket in rows:
+        for phase, key, state in [
+            ("created", "created_at", "new"),
+            ("acknowledged", "acknowledged_at", "acknowledged"),
+            ("resolved", "resolved_at", "resolved"),
+            ("closed", "closed_at", "closed"),
+        ]:
+            if ticket.get(key) is not None:
+                events.append({
+                    "ticket_id": ticket["id"],
+                    "at": ticket[key],
+                    "phase": phase,
+                    "priority": ticket["priority"],
+                    "state": state,
+                })
+    events.sort(key=lambda event: (event["at"], event["ticket_id"]))
+    return events
 
 
 @app.exception_handler(RequestValidationError)
@@ -474,7 +838,7 @@ async def resolve_ticket(ticket_id: str, request: Request) -> Any:
     row = fetch_ticket(ticket_id)
     if row is None:
         return error_response("not_found", "ticket not found", 404)
-    if row["state"] != "in_progress":
+    if row["state"] not in {"acknowledged", "in_progress"}:
         return error_response("invalid_transition", "invalid ticket transition", 409)
     now = parse_request_now(request)
     update_ticket(ticket_id, {"state": "resolved", "resolved_at": to_rfc3339(now)})

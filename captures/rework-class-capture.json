@@ -1,0 +1,6 @@
+{
+  "deployments": 10,
+  "notes": "Synthetic capture payload used to document the rework-rate calculation over the class submissions history.",
+  "rework_deployments": 3,
+  "source": "gh api --paginate \"repos/swasik/itsm-2026-submissions/issues?state=all&labels=receipted,kind:submission&per_page=100\""
+}

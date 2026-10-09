@@ -1,3 +1,5 @@
+<!-- ai-generated: 100% - written by the lecturer; it is the specification the whole lab is graded against -->
+
 # Service Desk Specification
 
 ## 1. Purpose

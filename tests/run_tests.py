@@ -171,6 +171,44 @@ def test_unknown_route_404():
     assert "error" in response.json()
 
 
+def test_dora_metrics_practice_fixture():
+    with open("/app/fixtures/events-practice.jsonl", "r", encoding="utf-8") as fh:
+        events = [__import__("json").loads(line) for line in fh if line.strip()]
+
+    response = client.post(
+        "/dora/metrics",
+        json={
+            "window": {"from": "2026-09-01T00:00:00Z", "to": "2026-09-22T00:00:00Z"},
+            "events": events,
+        },
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["spec_version"] == "1.0.0"
+    assert payload["deployment_frequency_per_day"] == 2.0
+    assert payload["counts"]["deployments"] == 42
+    assert payload["counts"]["failed_deployments"] == 8
+    assert payload["ground_truth"]["changes_delivered"] == 65
+
+
+def test_dora_ticket_events():
+    response = client.post(
+        "/tickets",
+        json={"title": "Ticket stream", "reporter": {"name": "Alice"}, "impact": 1, "urgency": 2},
+        headers={"X-Test-Clock": "2026-10-12T08:00:00Z"},
+    )
+    ticket_id = response.json()["id"]
+    client.post(f"/tickets/{ticket_id}/ack", headers={"X-Test-Clock": "2026-10-12T10:00:00Z"})
+    client.post(f"/tickets/{ticket_id}/resolve", headers={"X-Test-Clock": "2026-10-12T12:00:00Z"})
+
+    stream = client.get("/dora/ticket-events")
+    assert stream.status_code == 200
+    tickets = stream.json()
+    assert any(event["ticket_id"] == ticket_id and event["phase"] == "created" for event in tickets)
+    assert any(event["ticket_id"] == ticket_id and event["phase"] == "acknowledged" for event in tickets)
+    assert any(event["ticket_id"] == ticket_id and event["phase"] == "resolved" for event in tickets)
+
+
 checks = [
     ("health", test_health),
     ("create_and_get", test_create_and_get),
@@ -182,6 +220,8 @@ checks = [
     ("sla_vectors", test_sla_vectors),
     ("sla_breach_and_pause", test_sla_breach_and_pause),
     ("unknown_route_404", test_unknown_route_404),
+    ("dora_metrics_practice_fixture", test_dora_metrics_practice_fixture),
+    ("dora_ticket_events", test_dora_ticket_events),
 ]
 
 for name, fn in checks:
