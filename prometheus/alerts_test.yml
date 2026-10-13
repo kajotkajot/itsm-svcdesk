@@ -1,0 +1,136 @@
+# ai-generated: 100% - constructed promtool fire, quiet and reset tests for both declared multiwindow alerts
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{job="svcdesk", instance="svcdesk:8080", http_request_method="GET", http_route="/kb/search", http_response_status_code="200"}'
+        values: "0+600x70 427+427x90"
+      - series: 'http_server_request_duration_seconds_count{job="svcdesk", instance="svcdesk:8080", http_request_method="GET", http_route="/kb/search", http_response_status_code="502"}'
+        values: "0x70 173+173x90"
+      - series: 'http_server_request_duration_seconds_count{job="svcdesk", instance="svcdesk:8080", http_request_method="GET", http_route="/tickets/{id}", http_response_status_code="200"}'
+        values: "0+600x160"
+    alert_rule_test:
+      - eval_time: 104m
+        alertname: KbSearchErrorsBurnFast
+        exp_alerts: []
+      - eval_time: 105m
+        alertname: KbSearchErrorsBurnFast
+        exp_alerts:
+          - exp_labels:
+              service: svcdesk
+              slo: availability
+              severity: P1
+            exp_annotations:
+              summary: "Fast error-budget burn on /kb/search"
+              description: "The 5xx ratio is consuming the availability budget rapidly across both windows."
+
+  - interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{job="svcdesk", instance="svcdesk:8080", http_request_method="GET", http_route="/kb/search", http_response_status_code="200"}'
+        values: "0+557x180"
+      - series: 'http_server_request_duration_seconds_count{job="svcdesk", instance="svcdesk:8080", http_request_method="GET", http_route="/kb/search", http_response_status_code="502"}'
+        values: "0+43x180"
+      - series: 'http_server_request_duration_seconds_count{job="svcdesk", instance="svcdesk:8080", http_request_method="GET", http_route="/tickets/{id}", http_response_status_code="200"}'
+        values: "0+600x180"
+    alert_rule_test:
+      - eval_time: 1h
+        alertname: KbSearchErrorsBurnFast
+        exp_alerts: []
+      - eval_time: 2h
+        alertname: KbSearchErrorsBurnFast
+        exp_alerts: []
+      - eval_time: 3h
+        alertname: KbSearchErrorsBurnFast
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{job="svcdesk", instance="svcdesk:8080", http_request_method="GET", http_route="/kb/search", http_response_status_code="200"}'
+        values: "0+600x10 427+427x74 600+600x20"
+      - series: 'http_server_request_duration_seconds_count{job="svcdesk", instance="svcdesk:8080", http_request_method="GET", http_route="/kb/search", http_response_status_code="502"}'
+        values: "0x10 173+173x74 0x20"
+      - series: 'http_server_request_duration_seconds_count{job="svcdesk", instance="svcdesk:8080", http_request_method="GET", http_route="/tickets/{id}", http_response_status_code="200"}'
+        values: "0+600x100"
+    alert_rule_test:
+      - eval_time: 84m
+        alertname: KbSearchErrorsBurnFast
+        exp_alerts:
+          - exp_labels:
+              service: svcdesk
+              slo: availability
+              severity: P1
+            exp_annotations:
+              summary: "Fast error-budget burn on /kb/search"
+              description: "The 5xx ratio is consuming the availability budget rapidly across both windows."
+      - eval_time: 93m
+        alertname: KbSearchErrorsBurnFast
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{job="svcdesk", instance="svcdesk:8080", http_request_method="GET", http_route="/kb/search", http_response_status_code="200"}'
+        values: "0+600x370 528+528x250"
+      - series: 'http_server_request_duration_seconds_count{job="svcdesk", instance="svcdesk:8080", http_request_method="GET", http_route="/kb/search", http_response_status_code="502"}'
+        values: "0x370 72+72x250"
+      - series: 'http_server_request_duration_seconds_count{job="svcdesk", instance="svcdesk:8080", http_request_method="GET", http_route="/tickets/{id}", http_response_status_code="200"}'
+        values: "0+600x650"
+    alert_rule_test:
+      - eval_time: 554m
+        alertname: KbSearchErrorsBurnSlow
+        exp_alerts: []
+      - eval_time: 555m
+        alertname: KbSearchErrorsBurnSlow
+        exp_alerts:
+          - exp_labels:
+              service: svcdesk
+              slo: availability
+              severity: P2
+            exp_annotations:
+              summary: "Sustained error-budget burn on /kb/search"
+              description: "The 5xx ratio is consuming the availability budget across sustained windows."
+
+  - interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{job="svcdesk", instance="svcdesk:8080", http_request_method="GET", http_route="/kb/search", http_response_status_code="200"}'
+        values: "0+582x1080"
+      - series: 'http_server_request_duration_seconds_count{job="svcdesk", instance="svcdesk:8080", http_request_method="GET", http_route="/kb/search", http_response_status_code="502"}'
+        values: "0+18x1080"
+      - series: 'http_server_request_duration_seconds_count{job="svcdesk", instance="svcdesk:8080", http_request_method="GET", http_route="/tickets/{id}", http_response_status_code="200"}'
+        values: "0+600x1080"
+    alert_rule_test:
+      - eval_time: 6h
+        alertname: KbSearchErrorsBurnSlow
+        exp_alerts: []
+      - eval_time: 12h
+        alertname: KbSearchErrorsBurnSlow
+        exp_alerts: []
+      - eval_time: 18h
+        alertname: KbSearchErrorsBurnSlow
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{job="svcdesk", instance="svcdesk:8080", http_request_method="GET", http_route="/kb/search", http_response_status_code="200"}'
+        values: "0+600x10 528+528x374 600+600x50"
+      - series: 'http_server_request_duration_seconds_count{job="svcdesk", instance="svcdesk:8080", http_request_method="GET", http_route="/kb/search", http_response_status_code="502"}'
+        values: "0x10 72+72x374 0x50"
+      - series: 'http_server_request_duration_seconds_count{job="svcdesk", instance="svcdesk:8080", http_request_method="GET", http_route="/tickets/{id}", http_response_status_code="200"}'
+        values: "0+600x450"
+    alert_rule_test:
+      - eval_time: 384m
+        alertname: KbSearchErrorsBurnSlow
+        exp_alerts:
+          - exp_labels:
+              service: svcdesk
+              slo: availability
+              severity: P2
+            exp_annotations:
+              summary: "Sustained error-budget burn on /kb/search"
+              description: "The 5xx ratio is consuming the availability budget across sustained windows."
+      - eval_time: 421m
+        alertname: KbSearchErrorsBurnSlow
+        exp_alerts: []

@@ -7,12 +7,15 @@ import sqlite3
 import uuid
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
+from time import perf_counter
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI, Query, Request
+import httpx
+from fastapi import FastAPI, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Histogram, generate_latest
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 WARSAW = ZoneInfo("Europe/Warsaw")
@@ -20,6 +23,19 @@ DECISION_C1 = "wallclock"
 DECISION_C2 = "immutable"
 DECISION_C3 = "vip"
 PRIORITY_ORDER = ["P1", "P2", "P3", "P4"]
+DORA_HISTOGRAM_BUCKETS = (
+    0.005, 0.01, 0.02, 0.04, 0.06, 0.08, 0.10, 0.12, 0.14, 0.16,
+    0.18, 0.20, 0.21, 0.22, 0.23, 0.24, 0.25, 0.27, 0.30, 0.35,
+    0.4, 0.5, 0.75, 1, 1.5, 2, 3, 5, 10,
+)
+METRICS_REGISTRY = CollectorRegistry(auto_describe=True)
+REQUEST_DURATION = Histogram(
+    "http_server_request_duration_seconds",
+    "HTTP request duration in seconds.",
+    labelnames=("http_request_method", "http_route", "http_response_status_code"),
+    buckets=DORA_HISTOGRAM_BUCKETS,
+    registry=METRICS_REGISTRY,
+)
 
 
 class ValidationError(ValueError):
@@ -702,6 +718,48 @@ def compute_dora_metrics(body: Any) -> dict[str, Any]:
 
 
 app = FastAPI(title="svcdesk")
+
+
+@app.middleware("http")
+async def observe_http_requests(request: Request, call_next: Any) -> Response:
+    if request.url.path == "/metrics":
+        return await call_next(request)
+
+    started_at = perf_counter()
+    status_code = "500"
+    try:
+        response = await call_next(request)
+        status_code = str(response.status_code)
+        return response
+    finally:
+        route = request.scope.get("route")
+        route_template = getattr(route, "path", "unmatched")
+        REQUEST_DURATION.labels(request.method, route_template, status_code).observe(perf_counter() - started_at)
+
+
+@app.get("/metrics", include_in_schema=False)
+def metrics() -> Response:
+    return Response(generate_latest(METRICS_REGISTRY), headers={"Content-Type": CONTENT_TYPE_LATEST})
+
+
+@app.get("/kb/search")
+async def search_knowledge_base(q: str = Query(min_length=1, max_length=200)) -> Any:
+    index_url = os.getenv("KB_INDEX_URL", "http://kb-index:8080").rstrip("/")
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            upstream_response = await client.get(f"{index_url}/search", params={"q": q})
+    except httpx.RequestError:
+        return error_response("upstream_unavailable", "knowledge-base index is unavailable", 502)
+
+    if upstream_response.status_code != 200:
+        return error_response("upstream_unavailable", "knowledge-base index is unavailable", 502)
+
+    try:
+        payload = upstream_response.json()
+        hits = payload["hits"]
+    except (ValueError, KeyError, TypeError):
+        return error_response("upstream_unavailable", "knowledge-base index returned an invalid response", 502)
+    return {"query": q, "hits": hits}
 
 
 @app.get("/health")

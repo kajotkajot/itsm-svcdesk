@@ -34,18 +34,18 @@ lab3_first_draft:
       5,
       10,
     ]
-  verdict: TODO
-  evidence: { p99_seconds: TODO, bucket: [TODO, TODO], relative_width: TODO }
+  verdict: confirmed
+  evidence: { p99_seconds: 0.1413, bucket: [0.14, 0.16], relative_width: 0.142 }
 lab3_flawed_ladder:
   verdict: refuted # the only admissible verdict (M-27); the evidence is yours to compute
-  evidence: { p99_seconds: TODO, bucket: [TODO, TODO], relative_width: TODO }
+  evidence: { p99_seconds: 0.1413, bucket: [0.04, 0.5], relative_width: 3.255 }
 ---
 
 <!-- ai-generated: 100% - recorded this assistant exchange before measuring the service or designing its histogram -->
 
 # The assistant's first draft, and two verdicts
 
-This initial draft and its ladder were recorded before measurement. The p99 evidence and both verdicts remain for Step 3.
+The measured q was 0.1413 s. The draft ladder places it in (0.14, 0.16], whose 0.02 s width is 14.2% of q; it therefore resolves the measured value. At 0.95q and 1.05q, the containing buckets are (0.12, 0.14] and (0.14, 0.16], both also within the 20% limit. The instructor ladder places q in (0.04, 0.5], with width 0.46 / 0.1413 = 3.255, so it does not resolve it.
 
 ## Prompt
 
@@ -68,13 +68,12 @@ The ladder and alert are starting hypotheses only. Use measured latency to asses
 
 ## Verdict on the draft ladder
 
-The arithmetic: the p99 you measured, the bucket of the draft ladder that holds it, its width relative to the p99,
-and what `histogram_quantile` could report from that bucket. Then the verdict in one sentence.
+The measured p99 is 0.1413 s. The draft bucket is (0.14, 0.16], so its relative width is (0.16 - 0.14) / 0.1413 = 0.142; `histogram_quantile` interpolates within a narrow bucket here. The verdict is confirmed because this width is below 0.20q.
 
 ## The draft alert rule
 
-What the assistant's alert rule would have done for your SLO, and what you kept of it in `prometheus/alerts.yml`.
+The first draft proposed fast and slow multiwindow availability burns. Both remain in `prometheus/alerts.yml`, with the 99% availability objective used for their constant thresholds; I kept a separate 95% latency objective in the SLO.
 
 ## Verdict on the instructor's flawed ladder
 
-The same arithmetic for `buckets-flawed.example.yml`: where its resolution is spent, and where your p99 is.
+For the instructor ladder, q is in (0.04, 0.5], giving (0.5 - 0.04) / 0.1413 = 3.255. Its many fine boundaries are spent below 40 ms, while the measured 141.3 ms p99 falls in an extremely coarse bucket, so the verdict is refuted.
