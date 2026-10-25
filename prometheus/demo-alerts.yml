@@ -1,0 +1,48 @@
+# ai-generated: 50% - derived shop symptom rules from INCIDENT-SPEC.md and validated against the Lab 4 checks.
+groups:
+  - name: shop-symptoms
+    rules:
+      - alert: CheckoutErrorRate
+        expr: |
+          sum(rate(traces_span_metrics_calls_total{service_name="checkout", span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR"}[5m]))
+          /
+          sum(rate(traces_span_metrics_calls_total{service_name="checkout", span_kind="SPAN_KIND_SERVER"}[5m]))
+          > 0.05
+        for: 2m
+        labels:
+          service: checkout
+          severity: P1
+        annotations:
+          summary: "Checkout server errors exceed 5 percent"
+      - alert: CheckoutLatencyP99
+        expr: |
+          histogram_quantile(0.99, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name="checkout", span_kind="SPAN_KIND_SERVER"}[5m])))
+          > 2000
+        for: 2m
+        labels:
+          service: checkout
+          severity: P1
+        annotations:
+          summary: "Checkout server p99 latency exceeds 2 seconds"
+      - alert: CheckoutErrorWarning
+        expr: |
+          sum(rate(traces_span_metrics_calls_total{service_name="checkout", span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR"}[5m]))
+          /
+          sum(rate(traces_span_metrics_calls_total{service_name="checkout", span_kind="SPAN_KIND_SERVER"}[5m]))
+          > 0.01
+        for: 2m
+        labels:
+          service: checkout
+          severity: P2
+        annotations:
+          summary: "Checkout server errors exceed 1 percent"
+      - alert: FrontendLatencyP99
+        expr: |
+          histogram_quantile(0.99, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name="frontend", span_kind="SPAN_KIND_SERVER"}[5m])))
+          > 3000
+        for: 2m
+        labels:
+          service: frontend
+          severity: P3
+        annotations:
+          summary: "Frontend server p99 latency exceeds 3 seconds"

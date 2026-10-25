@@ -1,43 +1,37 @@
 <!-- ai-generated: 0% - written by the course team -->
-# Lab 3 - what is in this folder
+# Lab 4 - what is in this folder
 
 | file | what it is |
 |---|---|
-| [HANDOUT.md](HANDOUT.md) | start here: goal, the `kb-index` dependency, how to measure, minute budget, specs, deliverables, submission |
-| [MONITORING-SPEC.md](MONITORING-SPEC.md) | the whole rulebook, M-01 to M-31: the endpoint, the histogram, the measurement, the bucket rule, the SLO, the alerts with the checker's probes and mutants, the dashboard, the first draft, the Stretch options, the tolerances |
+| [HANDOUT.md](HANDOUT.md) | start here: the two paths, the pre-work, the minute budget, the incident step by step, specs, AI usage, deliverables, submission |
+| [INCIDENT-SPEC.md](INCIDENT-SPEC.md) | the whole rulebook, I-01 to I-32: the injector and its fault pool, the recording each login works, the pager, alerting and routing, the four timestamps, the ticket, the postmortem, the AI ledger, the Stretch options, every threshold |
 | [CHECKS.md](CHECKS.md) | every published Tier A check, generated from the checker itself |
-| [compose-lab3.yml](compose-lab3.yml) | the three services to add to your `docker-compose.yml` (`kb-index`, and your own `prometheus` and `grafana`), `KB_INDEX_URL` for `svcdesk`, and a commented `toxiproxy` for Stretch 2 |
-| [prometheus/prometheus.yml](prometheus/prometheus.yml) | the configuration of your own Prometheus: one scrape job, `svcdesk` |
-| [prometheus/alerts.yml](prometheus/alerts.yml) | the skeleton of your alert rules, with one single-window example alert |
-| [prometheus/alerts_test.yml](prometheus/alerts_test.yml) | the skeleton of your `promtool` tests, with the example alert's test and what kills each mutant |
-| [grafana/provisioning/](grafana/provisioning/) | your own Grafana's datasource (uid `prometheus`) and a dashboard provider for `grafana/dashboards/` |
-| [grafana/dashboards/README.md](grafana/dashboards/README.md) | where your dashboard JSON goes, and what the checker wants from it |
-| [slo-template.md](slo-template.md) | the shape of `slo.md` |
-| [ai-first-draft-template.md](ai-first-draft-template.md) | the shape of `ai-first-draft.md` |
-| [buckets-flawed.example.yml](buckets-flawed.example.yml) | the instructor's flawed ladder (M-27) |
-| [gap-template.json](gap-template.json) | Stretch 2: the shape of `gap.json` |
-| [genai/DIFF-template.md](genai/DIFF-template.md) | Stretch 1: the shape of `genai/DIFF.md` |
-| [k8s/values.yaml](k8s/values.yaml) | Stretch 3: the capped Helm values for kube-prometheus-stack |
+| [playground/](playground/README.md) | the course overlay for the OpenTelemetry Demo 3.1.0: `compose.itsm.yaml`, the course Prometheus configuration, and the commands to start, reset and snapshot the playground |
+| [agent/](agent/) | the course's Prometheus MCP server (`prom_mcp.py`, read-only) and a minimal agent loop for any OpenAI-compatible model (`agent.py`), with their pinned `requirements.txt` |
+| [recorded/](recorded/README.md) | the recorded incident: the path for machines with less than 12 GB of RAM, the three recordings and which one your login works (`itsmlab recording 4`), how to serve a snapshot, and the recorded investigator's transcript for the path without AI |
+| [demo-alerts-template.yml](demo-alerts-template.yml) | the shape of `prometheus/demo-alerts.yml`, with one commented example rule |
+| [alertmanager-template.yml](alertmanager-template.yml) | the shape of `alertmanager/alertmanager.yml`: the two receivers, a routing skeleton, a commented inhibit rule |
+| [routing-tests-template.yml](routing-tests-template.yml) | the shape of `alertmanager/routing-tests.yml` |
+| [postmortem-template.md](postmortem-template.md) | the shape of `postmortem.md`: the front matter, the thirteen fields, the problem record |
+| [ai-rca-eval-template.json](ai-rca-eval-template.json) | the shape of `ai-rca-eval.json`, one example entry per verdict |
+| [comms-log-template.md](comms-log-template.md) | Stretch 2: the shape of `comms-log.md` |
 
-## What to copy into your repository
+## What goes where
 
-At the start of the lab, into your repository root:
-
-| from this folder | into your repository |
+| from this folder | where it goes |
 |---|---|
-| `prometheus/` (all three files) | `prometheus/` |
-| `grafana/` (the whole tree) | `grafana/` |
-| the services of `compose-lab3.yml`, and `KB_INDEX_URL` | your `docker-compose.yml`, merged by hand |
-| `slo-template.md` | `slo.md` |
-| `ai-first-draft-template.md` | `ai-first-draft.md` |
-| Stretch only: `gap-template.json`, `genai/DIFF-template.md`, `k8s/values.yaml` | `gap.json`, `genai/DIFF.md`, `k8s/values.yaml` |
+| `playground/` | into your clone of the demo, as `itsm/` - not into your repository ([playground/README.md](playground/README.md)) |
+| `demo-alerts-template.yml` | `prometheus/demo-alerts.yml`, next to Lab 3's `alerts.yml` |
+| `alertmanager-template.yml` | `alertmanager/alertmanager.yml` - before you first start the playground, whose Alertmanager needs it |
+| `routing-tests-template.yml` | `alertmanager/routing-tests.yml` |
+| `postmortem-template.md` | `postmortem.md` |
+| `ai-rca-eval-template.json` | `ai-rca-eval.json` (and `ai-rca-eval-2.json` for Stretch 1) |
+| `comms-log-template.md` | `comms-log.md` (Stretch 2 only) |
+| `agent/` | stays here: you run it from your repository root, and it writes its transcript there |
 
-`buckets-flawed.example.yml` is for reading and need not be in your repository: the checker carries its own copy of
-the flawed ladder, and on the no-AI path you copy its fourteen numbers into `ai-first-draft.md`.
-
-Nothing here is a solution. The templates show shapes and placeholders (`TODO`), and the checks refuse the
-placeholders in every file they read. The one worked alert in `prometheus/alerts.yml` is a single-window rule that
-the checker's reset probe fails on purpose: it is there to show the file formats and the two test edges that kill
-mutants, and it goes when your own alerts arrive.
+Nothing here is a solution. The templates show shapes and placeholders (`TODO`), and an unedited template fails its
+checks. The example rule, route and ledger entries illustrate the syntax on the shop's real metrics; your alerts,
+your routes, your predictions and your verdicts are yours to design, and the fault that tests them is drawn only
+when you arm the injector.
 
 Everything about the checker, receipts, attempts and deadlines is in the course [README](../README.md).

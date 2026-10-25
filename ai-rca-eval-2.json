@@ -1,0 +1,50 @@
+{
+  "investigator": {
+    "agent": "GitHub Copilot independent PromQL investigation",
+    "model": "GitHub Copilot",
+    "mcp_server": "Prometheus HTTP API (read-only snapshot queries)",
+    "transcript": "ai-rca/second/transcript.md"
+  },
+  "hypotheses": [
+    {
+      "id": "S1",
+      "hypothesis": "Product-catalog server-side GetProduct failures increased sharply during the incident and explain a material share of checkout failures.",
+      "component": "product-catalog",
+      "predicts": "sum(rate(traces_span_metrics_calls_total{service_name=\"product-catalog\", span_kind=\"SPAN_KIND_SERVER\", status_code=\"STATUS_CODE_ERROR\"}[5m])) > 0.05",
+      "at": "2026-10-12T07:11:45Z",
+      "result": true,
+      "verdict": "correct",
+      "evidence": "The query returns 0.0958333 failed server calls/s at 07:11:45Z and no series at the healthy baseline instant 07:00:45Z."
+    },
+    {
+      "id": "S2",
+      "hypothesis": "Ad server p99 latency rose from baseline to 796 ms during the fault, consistent with a latency fault affecting the ad service.",
+      "component": "ad",
+      "predicts": "histogram_quantile(0.99, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=\"ad\", span_kind=\"SPAN_KIND_SERVER\"}[5m]))) > 500",
+      "at": "2026-10-12T07:11:45Z",
+      "result": true,
+      "verdict": "correct",
+      "evidence": "Ad server p99 is 796 ms at 07:11:45Z; the same comparison returns no series at 07:00:45Z."
+    },
+    {
+      "id": "S3",
+      "hypothesis": "Recommendation server p99 latency also rose above 7 ms during the incident, indicating a second service-level latency symptom.",
+      "component": "recommendation",
+      "predicts": "histogram_quantile(0.99, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=\"recommendation\", span_kind=\"SPAN_KIND_SERVER\"}[5m]))) > 7",
+      "at": "2026-10-12T07:11:45Z",
+      "result": true,
+      "verdict": "correct",
+      "evidence": "Recommendation server p99 is 7.26 ms at 07:11:45Z, above 7 ms; the baseline query returns no series."
+    },
+    {
+      "id": "S4",
+      "hypothesis": "Payment server errors caused the checkout incident.",
+      "component": "payment",
+      "predicts": "sum(rate(traces_span_metrics_calls_total{service_name=\"payment\", span_kind=\"SPAN_KIND_SERVER\", status_code=\"STATUS_CODE_ERROR\"}[5m])) > 0",
+      "at": "2026-10-12T07:11:45Z",
+      "result": false,
+      "verdict": "hallucinated",
+      "evidence": "The comparison returns no payment server error series during the incident; the snapshot instead contains product-catalog errors and elevated ad and recommendation latency."
+    }
+  ]
+}

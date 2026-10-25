@@ -1,0 +1,39 @@
+# ai-generated: 50% - defined route and inhibition cases to exercise the Lab 4 receiver and equal-label contract.
+routes:
+  - labels: { alertname: CheckoutErrorRate, service: checkout, severity: P1 }
+    receivers: [pager]
+  - labels: { alertname: CheckoutErrorWarning, service: checkout, severity: P2 }
+    receivers: [chat]
+  - labels: { alertname: FrontendLatencyP99, service: frontend, severity: P3 }
+    receivers: [chat]
+inhibitions:
+  - source:
+      {
+        alertname: CheckoutErrorRate,
+        service: checkout,
+        severity: P1,
+        cluster: shop,
+      }
+    target:
+      {
+        alertname: CheckoutErrorWarning,
+        service: checkout,
+        severity: P2,
+        cluster: shop,
+      }
+    inhibited: true
+  - source:
+      {
+        alertname: CheckoutErrorRate,
+        service: checkout,
+        severity: P1,
+        cluster: shop,
+      }
+    target:
+      {
+        alertname: CheckoutErrorWarning,
+        service: checkout,
+        severity: P2,
+        cluster: other,
+      }
+    inhibited: false
