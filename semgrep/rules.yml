@@ -1,0 +1,13 @@
+# ai-generated: 100% - GitHub Copilot wrote two service-specific guard rules and annotated their tests
+rules:
+  - id: svcdesk-no-catch-all-exception
+    languages: [python]
+    severity: WARNING
+    message: Catch a specific exception type so unexpected service failures remain visible.
+    pattern-regex: 'except\s+Exception(?:\s+as\s+\w+)?\s*:'
+
+  - id: svcdesk-no-sql-fstring
+    languages: [python]
+    severity: WARNING
+    message: Do not interpolate SQL with an f-string; bind values as query parameters.
+    pattern-regex: '\.execute\s*\(\s*f"'

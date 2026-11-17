@@ -9,8 +9,8 @@
 #   1. the environment variable ITSMLAB_IMAGE,
 #   2. "checker_image:" in ./itsmlab.yaml,
 #   3. ghcr.io/swasik/itsmlab:2026.
-# The current directory is mounted at /work inside the container, and the Docker socket is
-# mounted so that the checker can run "docker compose" for your service.
+# The current directory is mounted at the same absolute path inside the container, and the
+# Docker socket is mounted so that the checker can run "docker compose" for your service.
 set -eu
 
 default_image="ghcr.io/swasik/itsmlab:2026"
@@ -33,9 +33,12 @@ case "${DOCKER_HOST:-}" in
   *) extra="-e DOCKER_HOST=$DOCKER_HOST" ;;   # tcp://, ssh://: the CLI in the container needs it
 esac
 
+# GITHUB_TOKEN and GH_TOKEN reach the checker when they are set (a bare -e passes a variable only if it exists):
+# Lab 5 reads your runs and attestations from the GitHub API, which allows 60 anonymous calls an hour.
 # shellcheck disable=SC2086
 exec docker run --rm \
-  -v "$PWD:/work" -w /work \
+  -v "$PWD:$PWD" -w "$PWD" \
   -v "$sock:/var/run/docker.sock" \
+  -e GITHUB_TOKEN -e GH_TOKEN \
   $extra \
   "$image" "$@"
