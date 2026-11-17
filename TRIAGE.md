@@ -10,11 +10,11 @@ lab5_triage:
 
 Local draft. Complete the image digest, receipt number, scanner findings, and canary matrix after the required GitHub Actions runs and SARIF receipt.
 
-| Tool    | Rule                           | Decision       | Reason                                                                                                                                           |
-| ------- | ------------------------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| trivy   | python:3.13-slim base image    | fix            | Pinned the current base image digest, upgraded OS packages, and removed pip from the runtime image; the image gate must confirm the CVE result.  |
-| semgrep | svcdesk-no-catch-all-exception | accept         | The broad catches are limited to request JSON parsing and return the API's invalid-body response; narrow exception handling remains a follow-up. |
-| semgrep | svcdesk-no-sql-fstring         | false-positive | update_ticket receives fixed workflow field names, while all data values are still passed through SQLite placeholders.                           |
+| Tool    | Rule                                           | Decision       | Reason                                                                                                                                                                                                                     |
+| ------- | ---------------------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| trivy   | CVE-2025-62727, CVE-2026-48818, CVE-2026-54283 | fix            | CI run 44092574150 found all three HIGH findings in Starlette 0.46.2. Upgraded FastAPI to 0.163.1, which resolves Starlette 1.10.0; the same Trivy 0.74.0 image gate then reported zero HIGH or CRITICAL findings locally. |
+| semgrep | svcdesk-no-catch-all-exception                 | accept         | The broad catches are limited to request JSON parsing and return the API's invalid-body response; narrow exception handling remains a follow-up.                                                                           |
+| semgrep | svcdesk-no-sql-fstring                         | false-positive | update_ticket receives fixed workflow field names, while all data values are still passed through SQLite placeholders.                                                                                                     |
 
 ## Bake-off
 
